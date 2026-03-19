@@ -1,0 +1,51 @@
+# ====================================
+# Block Hide and Seek Configuration
+# ====================================
+
+# Game Settings
+game:
+  # Total game time in seconds (default: 300 = 5 minutes)
+  game-time: 300
+  # Seeker release countdown in seconds
+  seeker-countdown: 60
+  # How many seconds a player must stand still before becoming a solid block
+  still-time-ticks: 30
+
+# Firework Tracker
+tracker:
+  # Cooldown in seconds between tracker uses
+  cooldown: 45
+  # Radius of inaccuracy (firework spawns within this many blocks of the hider)
+  inaccuracy-radius: 5
+
+# Allowed disguise blocks (players can only become these blocks)
+allowed-blocks:
+  - STONE
+  - OAK_PLANKS
+  - GRASS_BLOCK
+  - DIRT
+  - COBBLESTONE
+  - OAK_LOG
+  - SPRUCE_LOG
+  - BIRCH_LOG
+  - BOOKSHELF
+  - CRAFTING_TABLE
+  - FURNACE
+  - CHEST
+  - HAY_BLOCK
+  - MELON
+  - PUMPKIN
+  - BRICKS
+  - MOSSY_COBBLESTONE
+  - TNT
+  - DIAMOND_BLOCK
+  - GOLD_BLOCK
+
+# Seeker spawn location (set in-game with /hs setseekerspawn)
+seeker-spawn:
+  world: "world"
+  x: 0.0
+  y: 64.0
+  z: 0.0
+  yaw: 0.0
+  pitch: 0.0

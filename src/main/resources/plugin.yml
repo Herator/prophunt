@@ -1,0 +1,21 @@
+name: BlockHideSeek
+version: '${project.version}'
+main: com.blockhideseek.BlockHideSeek
+api-version: '1.21'
+description: A block hide and seek minigame where hiders disguise as blocks!
+authors: [Herman]
+
+commands:
+  hideseek:
+    description: Main command for Block Hide and Seek
+    usage: /<command> <subcommand>
+    aliases: [hs, bhs]
+    permission: blockhideseek.admin
+
+permissions:
+  blockhideseek.admin:
+    description: Allows access to all BlockHideSeek commands
+    default: op
+  blockhideseek.play:
+    description: Allows joining a game
+    default: true
