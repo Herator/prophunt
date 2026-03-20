@@ -73,17 +73,21 @@ public class DisguiseManager {
             old.remove();
         }
 
-        // Spawn block display at player feet
-        BlockDisplay display = loc.getWorld().spawn(loc.clone().add(-0.5, 0, -0.5), BlockDisplay.class, entity -> {
+        // Spawn block display at player feet, offset so the block centers on the player
+        Location spawnLoc = loc.clone().add(-0.5, 0, -0.5);
+        spawnLoc.setYaw(0);
+        spawnLoc.setPitch(0);
+
+        BlockDisplay display = spawnLoc.getWorld().spawn(spawnLoc, BlockDisplay.class, entity -> {
             BlockData data = blockMaterial.createBlockData();
             entity.setBlock(data);
 
-            // Scale to 1x1x1 block size (default display size)
+            // No translation — we handle the offset in teleport positions instead
             Transformation transformation = new Transformation(
-                    new Vector3f(0, 0, 0),          // translation
-                    new AxisAngle4f(0, 0, 1, 0),     // left rotation
-                    new Vector3f(1.0f, 1.0f, 1.0f),  // scale
-                    new AxisAngle4f(0, 0, 1, 0)      // right rotation
+                    new Vector3f(0f, 0f, 0f),          // no translation
+                    new AxisAngle4f(0, 0, 0, 1),       // no rotation
+                    new Vector3f(1.0f, 1.0f, 1.0f),    // scale
+                    new AxisAngle4f(0, 0, 0, 1)        // no rotation
             );
             entity.setTransformation(transformation);
             entity.setShadowRadius(0);
@@ -118,6 +122,30 @@ public class DisguiseManager {
                         continue;
                     }
 
+                    // If locked (snapped to grid), check if player wants to break out
+                    if (solidBlocks.containsKey(uuid)) {
+                        Location currentLoc = player.getLocation();
+                        Location lastLoc = lastLocations.get(uuid);
+
+                        boolean moved = lastLoc == null ||
+                                Math.abs(currentLoc.getX() - lastLoc.getX()) > 0.05 ||
+                                Math.abs(currentLoc.getY() - lastLoc.getY()) > 0.05 ||
+                                Math.abs(currentLoc.getZ() - lastLoc.getZ()) > 0.05;
+
+                        // Player moved or sneaked - break out of solid mode
+                        if (moved || player.isSneaking()) {
+                            removeSolidBlock(uuid);
+                            lastLocations.put(uuid, currentLoc.clone());
+
+                            // Snap display back to following the player (offset to center)
+                            Location displayLoc = currentLoc.clone().add(-0.5, 0, -0.5);
+                            displayLoc.setYaw(0);
+                            displayLoc.setPitch(0);
+                            display.teleport(displayLoc);
+                        }
+                        continue;
+                    }
+
                     Location currentLoc = player.getLocation();
                     Location lastLoc = lastLocations.get(uuid);
 
@@ -127,18 +155,15 @@ public class DisguiseManager {
                             Math.abs(currentLoc.getZ() - lastLoc.getZ()) > 0.05;
 
                     if (moved) {
-                        // Player moved - remove solid block if exists, reset still counter
-                        removeSolidBlock(uuid);
+                        // Player moved - reset still counter
                         stillTicks.put(uuid, 0);
                         lastLocations.put(uuid, currentLoc.clone());
 
-                        // Move the block display to follow the player
-                        display.teleport(currentLoc.clone().add(-0.5, 0, -0.5));
-
-                        // Make sure display is visible
-                        if (display.getViewRange() < 1.0f) {
-                            display.setViewRange(1.0f);
-                        }
+                        // Move the block display to follow the player (offset to center)
+                        Location displayLoc = currentLoc.clone().add(-0.5, 0, -0.5);
+                        displayLoc.setYaw(0);
+                        displayLoc.setPitch(0);
+                        display.teleport(displayLoc);
                     } else {
                         // Player is standing still
                         int ticks = stillTicks.getOrDefault(uuid, 0) + 1;
@@ -146,8 +171,8 @@ public class DisguiseManager {
 
                         int requiredTicks = plugin.getConfigManager().getStillTimeTicks();
                         if (ticks >= requiredTicks && !solidBlocks.containsKey(uuid)) {
-                            // Place a solid block
-                            placeSolidBlock(player, uuid);
+                            // Snap the display entity to the grid (looks like a placed block)
+                            snapToGrid(player, uuid, display);
                         }
                     }
                 }
@@ -156,53 +181,49 @@ public class DisguiseManager {
     }
 
     /**
-     * Place a real block at the player's location to make them look like part of the world.
+     * Snap the block display entity to the grid so it looks like a placed block.
+     * No real block is placed — it's just the entity positioned on the block grid.
      */
-    private void placeSolidBlock(Player player, UUID uuid) {
-        Material material = disguiseMaterials.get(uuid);
-        if (material == null) return;
-
+    private void snapToGrid(Player player, UUID uuid, BlockDisplay display) {
+        // Get the block position the player is standing in
         Location blockLoc = player.getLocation().getBlock().getLocation();
 
-        // Only place if the space is air
-        if (blockLoc.getBlock().getType() == Material.AIR ||
-            blockLoc.getBlock().getType() == Material.CAVE_AIR) {
+        // Snap the display entity to the grid position
+        Location gridLoc = blockLoc.clone();
+        gridLoc.setYaw(0);
+        gridLoc.setPitch(0);
+        display.teleport(gridLoc);
 
-            blockLoc.getBlock().setType(material);
-            solidBlocks.put(uuid, blockLoc.clone());
+        // Mark as solid (snapped to grid)
+        solidBlocks.put(uuid, blockLoc.clone());
 
-            // Hide the block display (it's now a real block)
-            BlockDisplay display = disguiseEntities.get(uuid);
-            if (display != null && !display.isDead()) {
-                display.setViewRange(0);
-            }
-
-            // Teleport player slightly into the block so they don't appear separate
-            Location insideBlock = blockLoc.clone().add(0.5, 0, 0.5);
-            insideBlock.setYaw(player.getLocation().getYaw());
-            insideBlock.setPitch(player.getLocation().getPitch());
-            player.teleport(insideBlock);
-        }
+        player.sendMessage(net.kyori.adventure.text.Component.text(
+                "You blended in! Move or Sneak to break out.",
+                net.kyori.adventure.text.format.NamedTextColor.GREEN));
     }
 
     /**
      * Remove the solid block placed for a player.
      */
     private void removeSolidBlock(UUID uuid) {
-        Location solidLoc = solidBlocks.remove(uuid);
-        if (solidLoc != null) {
-            // Only remove if the block is still the disguise material
-            Material expected = disguiseMaterials.get(uuid);
-            if (expected != null && solidLoc.getBlock().getType() == expected) {
-                solidLoc.getBlock().setType(Material.AIR);
-            }
-        }
+        solidBlocks.remove(uuid);
 
-        // Make block display visible again
-        BlockDisplay display = disguiseEntities.get(uuid);
-        if (display != null && !display.isDead()) {
-            display.setViewRange(1.0f);
-        }
+        // Reset still counter so they don't instantly re-solidify
+        stillTicks.put(uuid, 0);
+    }
+
+    /**
+     * Break a hider out of solid block mode back to following mode.
+     * The hider keeps their disguise but the real block is removed and they can move again.
+     */
+    public void breakSolidBlock(Player player) {
+        UUID uuid = player.getUniqueId();
+        removeSolidBlock(uuid);
+        lastLocations.put(uuid, player.getLocation().clone());
+
+        player.sendMessage(net.kyori.adventure.text.Component.text(
+                "Your block was broken! RUN!",
+                net.kyori.adventure.text.format.NamedTextColor.RED));
     }
 
     /**
@@ -234,6 +255,13 @@ public class DisguiseManager {
      */
     public boolean isDisguised(Player player) {
         return disguiseMaterials.containsKey(player.getUniqueId());
+    }
+
+    /**
+     * Check if a player is currently in solid (grid-snapped) mode.
+     */
+    public boolean isSolid(Player player) {
+        return solidBlocks.containsKey(player.getUniqueId());
     }
 
     /**
@@ -269,14 +297,6 @@ public class DisguiseManager {
         for (Map.Entry<UUID, BlockDisplay> entry : disguiseEntities.entrySet()) {
             if (entry.getValue() != null && !entry.getValue().isDead()) {
                 entry.getValue().remove();
-            }
-        }
-
-        for (Map.Entry<UUID, Location> entry : solidBlocks.entrySet()) {
-            Location loc = entry.getValue();
-            Material expected = disguiseMaterials.get(entry.getKey());
-            if (expected != null && loc.getBlock().getType() == expected) {
-                loc.getBlock().setType(Material.AIR);
             }
         }
 

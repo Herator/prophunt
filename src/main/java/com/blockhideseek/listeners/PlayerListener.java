@@ -15,6 +15,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 
@@ -62,13 +63,16 @@ public class PlayerListener implements Listener {
             }
         }
 
-        // Handle seeker using tracker
+        // Handle seeker using tracker or sonar
         if (role == PlayerRole.SEEKER && state == GameState.PLAYING) {
             ItemStack item = event.getItem();
-            if (item != null && plugin.getGameManager().isTrackerItem(item)) {
-                if (event.getAction().name().contains("RIGHT")) {
+            if (item != null && event.getAction().name().contains("RIGHT")) {
+                if (plugin.getGameManager().isTrackerItem(item)) {
                     event.setCancelled(true);
                     plugin.getGameManager().useTracker(player);
+                } else if (plugin.getGameManager().isSonarItem(item)) {
+                    event.setCancelled(true);
+                    plugin.getGameManager().useSonar(player);
                 }
             }
         }
@@ -95,11 +99,13 @@ public class PlayerListener implements Listener {
         PlayerRole victimRole = plugin.getGameManager().getRole(victim);
 
         if (attackerRole == PlayerRole.SEEKER && victimRole == PlayerRole.HIDER) {
-            // Seeker found a hider!
-            event.setCancelled(true); // Cancel damage
-            plugin.getGameManager().hiderFound(victim, attacker);
+            // Let the damage go through — hiders have to be killed, not just tapped
+            // If they're in solid block mode, break them out first
+            if (plugin.getDisguiseManager().isSolid(victim)) {
+                plugin.getDisguiseManager().breakSolidBlock(victim);
+            }
         } else {
-            // Prevent friendly fire
+            // Prevent friendly fire (seeker vs seeker, hider vs anyone)
             event.setCancelled(true);
         }
     }
@@ -123,10 +129,13 @@ public class PlayerListener implements Listener {
 
         if (role == PlayerRole.SEEKER) {
             Block block = event.getBlock();
-            // Check if this block is a disguised hider
+            // Check if this block is a disguised hider - break them out of solid mode
             Player hider = plugin.getDisguiseManager().getHiderAtSolidBlock(block.getLocation());
             if (hider != null) {
-                plugin.getGameManager().hiderFound(hider, player);
+                plugin.getDisguiseManager().breakSolidBlock(hider);
+                player.sendMessage(net.kyori.adventure.text.Component.text(
+                        "You broke a hider's disguise! Chase them!",
+                        net.kyori.adventure.text.format.NamedTextColor.GREEN));
             }
         }
     }
@@ -147,23 +156,65 @@ public class PlayerListener implements Listener {
                 Block block = event.getClickedBlock();
                 Player hider = plugin.getDisguiseManager().getHiderAtSolidBlock(block.getLocation());
                 if (hider != null) {
-                    plugin.getGameManager().hiderFound(hider, player);
+                    plugin.getDisguiseManager().breakSolidBlock(hider);
+                    player.sendMessage(net.kyori.adventure.text.Component.text(
+                            "You broke a hider's disguise! Chase them!",
+                            net.kyori.adventure.text.format.NamedTextColor.GREEN));
                 }
             }
         }
     }
 
     /**
-     * Prevent all damage to game players except from game mechanics.
+     * Prevent all damage to game players except from seeker swords.
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onEntityDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (!plugin.getGameManager().isInGame(player)) return;
 
+        if (event instanceof EntityDamageByEntityEvent entityEvent) {
+            // Block firework explosion damage
+            if (entityEvent.getDamager() instanceof org.bukkit.entity.Firework) {
+                event.setCancelled(true);
+                return;
+            }
+            // Allow seeker-on-hider damage (handled in the other listener)
+            return;
+        }
+
         // Cancel all non-player damage (fall, fire, etc.)
-        if (!(event instanceof EntityDamageByEntityEvent)) {
-            event.setCancelled(true);
+        event.setCancelled(true);
+    }
+
+    /**
+     * When a hider dies, they become a seeker. Respawn them instantly.
+     */
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (!plugin.getGameManager().isInGame(player)) return;
+
+        PlayerRole role = plugin.getGameManager().getRole(player);
+        if (role == PlayerRole.HIDER) {
+            // Clear death drops and message
+            event.getDrops().clear();
+            event.setDroppedExp(0);
+            event.deathMessage(null);
+
+            // Find who killed them
+            Player killer = player.getKiller();
+
+            // Schedule instant respawn and conversion to seeker
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                player.spigot().respawn();
+
+                // Teleport to seeker spawn
+                player.teleport(plugin.getConfigManager().getSeekerSpawn());
+
+                // Convert to seeker through game manager
+                plugin.getGameManager().hiderFound(player, killer != null ? killer : player);
+            }, 1L);
         }
     }
 

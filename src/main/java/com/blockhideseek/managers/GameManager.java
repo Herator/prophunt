@@ -29,14 +29,16 @@ public class GameManager {
     private final Map<UUID, PlayerRole> playerRoles = new HashMap<>();
     private final Map<UUID, Long> foundTimes = new LinkedHashMap<>(); // track order found
     private final Map<UUID, Long> trackerCooldowns = new HashMap<>();
+    private final Map<UUID, Long> sonarCooldowns = new HashMap<>();
 
     private BukkitTask gameTimer;
     private BukkitTask countdownTimer;
     private int timeRemaining;
     private long gameStartTime;
 
-    // Custom item key for the tracker
+    // Custom item display names
     private static final String TRACKER_DISPLAY_NAME = "§6§lHider Tracker";
+    private static final String SONAR_DISPLAY_NAME = "§b§lHider Sonar";
 
     public GameManager(BlockHideSeek plugin) {
         this.plugin = plugin;
@@ -53,6 +55,7 @@ public class GameManager {
         playerRoles.clear();
         foundTimes.clear();
         trackerCooldowns.clear();
+        sonarCooldowns.clear();
 
         // Assign roles
         for (Player seeker : seekers) {
@@ -73,6 +76,7 @@ public class GameManager {
             seeker.getInventory().clear();
             seeker.setHealth(20);
             seeker.setFoodLevel(20);
+            seeker.setCollidable(false);
             seeker.setFreezeTicks(Integer.MAX_VALUE); // Freeze them during countdown
             seeker.showTitle(Title.title(
                     Component.text("You are a SEEKER!", NamedTextColor.RED, TextDecoration.BOLD),
@@ -87,6 +91,7 @@ public class GameManager {
             hider.getInventory().clear();
             hider.setHealth(20);
             hider.setFoodLevel(20);
+            hider.setCollidable(false);
 
             // Give hiders block selection
             giveBlockSelector(hider);
@@ -195,7 +200,7 @@ public class GameManager {
     }
 
     /**
-     * Called when a hider is found (hit by a seeker).
+     * Called when a hider is found/killed by a seeker.
      */
     public void hiderFound(Player hider, Player seeker) {
         if (state != GameState.PLAYING) return;
@@ -209,7 +214,9 @@ public class GameManager {
         playerRoles.put(hider.getUniqueId(), PlayerRole.SEEKER);
         plugin.getDisguiseManager().removeDisguise(hider);
 
-        // Give them seeker items
+        // Heal them up, give seeker items
+        hider.setHealth(20);
+        hider.setFoodLevel(20);
         hider.getInventory().clear();
         giveSeekerItems(hider);
 
@@ -295,6 +302,7 @@ public class GameManager {
             if (p != null && p.isOnline()) {
                 p.getInventory().clear();
                 p.setFreezeTicks(0);
+                p.setCollidable(true);
                 p.setGameMode(GameMode.SURVIVAL);
             }
         }
@@ -306,6 +314,7 @@ public class GameManager {
         playerRoles.clear();
         foundTimes.clear();
         trackerCooldowns.clear();
+        sonarCooldowns.clear();
         state = GameState.WAITING;
     }
 
@@ -326,6 +335,7 @@ public class GameManager {
             if (p != null && p.isOnline()) {
                 p.getInventory().clear();
                 p.setFreezeTicks(0);
+                p.setCollidable(true);
                 p.setGameMode(GameMode.SURVIVAL);
             }
         }
@@ -333,6 +343,7 @@ public class GameManager {
         playerRoles.clear();
         foundTimes.clear();
         trackerCooldowns.clear();
+        sonarCooldowns.clear();
         state = GameState.WAITING;
 
         broadcastMessage(Component.text("Block Hide and Seek has been stopped!", NamedTextColor.RED));
@@ -375,17 +386,20 @@ public class GameManager {
             double offsetZ = ThreadLocalRandom.current().nextDouble(-inaccuracy, inaccuracy);
             hiderLoc.add(offsetX, 2, offsetZ);
 
-            // Spawn firework
+            // Spawn firework that flies up as a flare — no explosion, no damage
             Firework firework = hiderLoc.getWorld().spawn(hiderLoc, Firework.class);
             FireworkMeta meta = firework.getFireworkMeta();
             meta.addEffect(FireworkEffect.builder()
-                    .withColor(Color.RED, Color.ORANGE)
-                    .withFade(Color.YELLOW)
-                    .with(FireworkEffect.Type.BALL_LARGE)
+                    .withColor(Color.RED)
+                    .with(FireworkEffect.Type.BALL)
                     .trail(true)
+                    .flicker(false)
                     .build());
-            meta.setPower(0); // Explode quickly
+            meta.setPower(1); // Flies up a bit before exploding
             firework.setFireworkMeta(meta);
+            // Prevent firework from dealing damage to players
+            firework.setShooter(seeker);
+            firework.setSilent(true);
         }
 
         if (foundAny) {
@@ -393,6 +407,49 @@ public class GameManager {
                     NamedTextColor.GOLD));
         } else {
             seeker.sendMessage(Component.text("No hiders to track!", NamedTextColor.GRAY));
+        }
+
+        return true;
+    }
+
+    /**
+     * Use the sonar ability — makes every hider emit a sound from their location.
+     */
+    public boolean useSonar(Player seeker) {
+        if (state != GameState.PLAYING) return false;
+        if (getRole(seeker) != PlayerRole.SEEKER) return false;
+
+        // Check cooldown (uses half of tracker cooldown)
+        long now = System.currentTimeMillis();
+        long cooldownMs = (plugin.getConfigManager().getTrackerCooldown() / 2) * 1000L;
+        Long lastUse = sonarCooldowns.get(seeker.getUniqueId());
+        if (lastUse != null && (now - lastUse) < cooldownMs) {
+            long remaining = (cooldownMs - (now - lastUse)) / 1000;
+            seeker.sendMessage(Component.text("Sonar on cooldown! " + remaining + "s remaining.",
+                    NamedTextColor.RED));
+            return false;
+        }
+
+        sonarCooldowns.put(seeker.getUniqueId(), now);
+
+        boolean foundAny = false;
+        for (Map.Entry<UUID, PlayerRole> entry : playerRoles.entrySet()) {
+            if (entry.getValue() != PlayerRole.HIDER) continue;
+            Player hider = Bukkit.getPlayer(entry.getKey());
+            if (hider == null || !hider.isOnline()) continue;
+
+            foundAny = true;
+            Location hiderLoc = hider.getLocation();
+
+            // Play a loud sound at the hider's location that nearby seekers can hear
+            hiderLoc.getWorld().playSound(hiderLoc, Sound.BLOCK_NOTE_BLOCK_BELL, 2.0f, 1.0f);
+        }
+
+        if (foundAny) {
+            seeker.sendMessage(Component.text("Sonar activated! Listen for the sounds!",
+                    NamedTextColor.AQUA));
+        } else {
+            seeker.sendMessage(Component.text("No hiders to ping!", NamedTextColor.GRAY));
         }
 
         return true;
@@ -406,7 +463,7 @@ public class GameManager {
         sword.setItemMeta(swordMeta);
         seeker.getInventory().addItem(sword);
 
-        // Tracker item (firework star)
+        // Tracker item (firework star) - slot 8
         ItemStack tracker = new ItemStack(Material.FIREWORK_STAR);
         ItemMeta trackerMeta = tracker.getItemMeta();
         trackerMeta.displayName(Component.text(TRACKER_DISPLAY_NAME));
@@ -417,7 +474,20 @@ public class GameManager {
         trackerMeta.lore(lore);
         trackerMeta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
         tracker.setItemMeta(trackerMeta);
-        seeker.getInventory().setItem(8, tracker); // Put in last slot
+        seeker.getInventory().setItem(8, tracker);
+
+        // Sonar item (note block) - slot 7
+        ItemStack sonar = new ItemStack(Material.NOTE_BLOCK);
+        ItemMeta sonarMeta = sonar.getItemMeta();
+        sonarMeta.displayName(Component.text(SONAR_DISPLAY_NAME));
+        List<Component> sonarLore = new ArrayList<>();
+        sonarLore.add(Component.text("Right-click to make hiders emit a sound!", NamedTextColor.GRAY));
+        sonarLore.add(Component.text("Cooldown: " + (plugin.getConfigManager().getTrackerCooldown() / 2) + "s",
+                NamedTextColor.DARK_GRAY));
+        sonarMeta.lore(sonarLore);
+        sonarMeta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
+        sonar.setItemMeta(sonarMeta);
+        seeker.getInventory().setItem(7, sonar);
     }
 
     private void giveBlockSelector(Player hider) {
@@ -462,9 +532,17 @@ public class GameManager {
         if (!item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
         if (meta.displayName() == null) return false;
-        // Check using legacy format since we set it that way
         return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
                 .plainText().serialize(meta.displayName()).contains("Hider Tracker");
+    }
+
+    public boolean isSonarItem(ItemStack item) {
+        if (item == null || item.getType() != Material.NOTE_BLOCK) return false;
+        if (!item.hasItemMeta()) return false;
+        ItemMeta meta = item.getItemMeta();
+        if (meta.displayName() == null) return false;
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+                .plainText().serialize(meta.displayName()).contains("Hider Sonar");
     }
 
     // Utility methods
@@ -518,6 +596,7 @@ public class GameManager {
         }
         player.getInventory().clear();
         player.setFreezeTicks(0);
+        player.setCollidable(true);
         player.setGameMode(GameMode.SURVIVAL);
 
         plugin.getScoreboardManager().updateScoreboard(this);
