@@ -390,9 +390,11 @@ public class GameManager {
         if (state != GameState.PLAYING) return false;
         if (getRole(seeker) != PlayerRole.SEEKER) return false;
 
-        // Check cooldown
+        // Check cooldown — scales with seeker count (each extra seeker adds 50% base cooldown)
         long now = System.currentTimeMillis();
-        long cooldownMs = plugin.getConfigManager().getTrackerCooldown() * 1000L;
+        long baseCooldownMs = plugin.getConfigManager().getTrackerCooldown() * 1000L;
+        int seekerCount = getSeekerCount();
+        long cooldownMs = baseCooldownMs + (long) ((seekerCount - 1) * baseCooldownMs * 0.5);
         Long lastUse = trackerCooldowns.get(seeker.getUniqueId());
         if (lastUse != null && (now - lastUse) < cooldownMs) {
             long remaining = (cooldownMs - (now - lastUse)) / 1000;
@@ -453,9 +455,11 @@ public class GameManager {
         if (state != GameState.PLAYING) return false;
         if (getRole(seeker) != PlayerRole.SEEKER) return false;
 
-        // Check cooldown (uses half of tracker cooldown)
+        // Check cooldown (half of tracker base) — scales with seeker count
         long now = System.currentTimeMillis();
-        long cooldownMs = (plugin.getConfigManager().getTrackerCooldown() / 2) * 1000L;
+        long baseCooldownMs = (plugin.getConfigManager().getTrackerCooldown() / 2) * 1000L;
+        int seekerCount = getSeekerCount();
+        long cooldownMs = baseCooldownMs + (long) ((seekerCount - 1) * baseCooldownMs * 0.5);
         Long lastUse = sonarCooldowns.get(seeker.getUniqueId());
         if (lastUse != null && (now - lastUse) < cooldownMs) {
             long remaining = (cooldownMs - (now - lastUse)) / 1000;
