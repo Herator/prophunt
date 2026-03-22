@@ -36,6 +36,7 @@ public class HideSeekCommand implements CommandExecutor {
             case "start" -> handleStart(sender, args);
             case "stop" -> handleStop(sender);
             case "setseekerspawn" -> handleSetSeekerSpawn(sender);
+            case "setgamespawn" -> handleSetGameSpawn(sender);
             case "addblock" -> handleAddBlock(sender, args);
             case "removeblock" -> handleRemoveBlock(sender, args);
             case "blocks" -> handleListBlocks(sender);
@@ -115,6 +116,17 @@ public class HideSeekCommand implements CommandExecutor {
         }
         plugin.getConfigManager().setSeekerSpawn(player.getLocation());
         sender.sendMessage(Component.text("Seeker spawn set to your current location!", NamedTextColor.GREEN));
+    }
+
+    private void handleSetGameSpawn(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can use this command.", NamedTextColor.RED));
+            return;
+        }
+        plugin.getConfigManager().setGameSpawn(player.getLocation());
+        sender.sendMessage(Component.text("Game spawn set to your current location!", NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Hiders will start here, and seekers will be teleported here after the countdown.",
+                NamedTextColor.GRAY));
     }
 
     private void handleAddBlock(CommandSender sender, String[] args) {
@@ -236,7 +248,9 @@ public class HideSeekCommand implements CommandExecutor {
         sender.sendMessage(Component.text("/hs stop ", NamedTextColor.YELLOW)
                 .append(Component.text("- Stop the current game", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs setseekerspawn ", NamedTextColor.YELLOW)
-                .append(Component.text("- Set seeker spawn point", NamedTextColor.GRAY)));
+                .append(Component.text("- Set where seekers wait during countdown", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/hs setgamespawn ", NamedTextColor.YELLOW)
+                .append(Component.text("- Set where everyone starts (hiders + seekers after countdown)", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs addblock <material> ", NamedTextColor.YELLOW)
                 .append(Component.text("- Add a block to disguise list", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs removeblock <material> ", NamedTextColor.YELLOW)

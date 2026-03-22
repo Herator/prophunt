@@ -41,8 +41,17 @@ allowed-blocks:
   - DIAMOND_BLOCK
   - GOLD_BLOCK
 
-# Seeker spawn location (set in-game with /hs setseekerspawn)
+# Seeker spawn location - where seekers wait during countdown (set with /hs setseekerspawn)
 seeker-spawn:
+  world: "world"
+  x: 0.0
+  y: 64.0
+  z: 0.0
+  yaw: 0.0
+  pitch: 0.0
+
+# Game spawn location - where hiders start and seekers tp to after countdown (set with /hs setgamespawn)
+game-spawn:
   world: "world"
   x: 0.0
   y: 64.0

@@ -14,6 +14,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -30,10 +32,14 @@ public class GameManager {
     private final Map<UUID, Long> foundTimes = new LinkedHashMap<>(); // track order found
     private final Map<UUID, Long> trackerCooldowns = new HashMap<>();
     private final Map<UUID, Long> sonarCooldowns = new HashMap<>();
+    private final Map<UUID, Long> combatTags = new HashMap<>();
+
+    private static final long COMBAT_TAG_DURATION_MS = 20000; // 20 seconds out of combat to regen
 
     private BukkitTask gameTimer;
     private BukkitTask countdownTimer;
     private int timeRemaining;
+    private int seekerCountdownRemaining;
     private long gameStartTime;
 
     // Custom item display names
@@ -76,8 +82,15 @@ public class GameManager {
             seeker.getInventory().clear();
             seeker.setHealth(20);
             seeker.setFoodLevel(20);
+            seeker.setSaturation(20);
             seeker.setCollidable(false);
-            seeker.setFreezeTicks(Integer.MAX_VALUE); // Freeze them during countdown
+            seeker.setFreezeTicks(Integer.MAX_VALUE);
+            // Infinite hunger so they never starve, no health regen
+            seeker.addPotionEffect(new PotionEffect(PotionEffectType.SATURATION, Integer.MAX_VALUE, 0, false, false, false));
+            // Blind and slow them so they can't see or move
+            int countdownTicks = plugin.getConfigManager().getSeekerCountdown() * 20 + 40; // extra buffer
+            seeker.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, countdownTicks, 255, false, false, false));
+            seeker.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, countdownTicks, 255, false, false, false));
             seeker.showTitle(Title.title(
                     Component.text("You are a SEEKER!", NamedTextColor.RED, TextDecoration.BOLD),
                     Component.text("Wait for the countdown...", NamedTextColor.GRAY),
@@ -87,11 +100,15 @@ public class GameManager {
 
         // Setup hiders
         for (Player hider : hiders) {
+            hider.teleport(plugin.getConfigManager().getGameSpawn());
             hider.setGameMode(GameMode.ADVENTURE);
             hider.getInventory().clear();
             hider.setHealth(20);
             hider.setFoodLevel(20);
+            hider.setSaturation(20);
             hider.setCollidable(false);
+            // Infinite hunger so they never starve, no health regen
+            hider.addPotionEffect(new PotionEffect(PotionEffectType.SATURATION, Integer.MAX_VALUE, 0, false, false, false));
 
             // Give hiders block selection
             giveBlockSelector(hider);
@@ -119,9 +136,9 @@ public class GameManager {
     }
 
     private void startCountdown(int seconds, List<Player> seekers) {
-        countdownTimer = new BukkitRunnable() {
-            int remaining = seconds;
+        seekerCountdownRemaining = seconds;
 
+        countdownTimer = new BukkitRunnable() {
             @Override
             public void run() {
                 if (state != GameState.HIDING) {
@@ -130,23 +147,22 @@ public class GameManager {
                 }
 
                 timeRemaining--;
+                seekerCountdownRemaining--;
                 plugin.getScoreboardManager().updateScoreboard(GameManager.this);
 
-                if (remaining <= 5 && remaining > 0) {
-                    broadcastMessage(Component.text("Seekers released in " + remaining + "...",
+                if (seekerCountdownRemaining <= 5 && seekerCountdownRemaining > 0) {
+                    broadcastMessage(Component.text("Seekers released in " + seekerCountdownRemaining + "...",
                             NamedTextColor.RED, TextDecoration.BOLD));
                     for (Player p : getPlayersInGame()) {
                         p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
                     }
                 }
 
-                if (remaining <= 0) {
+                if (seekerCountdownRemaining <= 0) {
                     releaseSeekers(seekers);
                     cancel();
                     return;
                 }
-
-                remaining--;
             }
         }.runTaskTimer(plugin, 20L, 20L);
     }
@@ -154,9 +170,15 @@ public class GameManager {
     private void releaseSeekers(List<Player> seekers) {
         state = GameState.PLAYING;
 
+        Location gameSpawn = plugin.getConfigManager().getGameSpawn();
         for (Player seeker : seekers) {
             if (seeker.isOnline()) {
+                seeker.teleport(gameSpawn);
                 seeker.setFreezeTicks(0);
+                seeker.removePotionEffect(PotionEffectType.BLINDNESS);
+                seeker.removePotionEffect(PotionEffectType.SLOWNESS);
+                // Speed 1 for seekers
+                seeker.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, Integer.MAX_VALUE, 0, false, false, false));
                 giveSeekerItems(seeker);
                 seeker.showTitle(Title.title(
                         Component.text("GO HUNT!", NamedTextColor.RED, TextDecoration.BOLD),
@@ -213,11 +235,13 @@ public class GameManager {
         // Convert hider to seeker
         playerRoles.put(hider.getUniqueId(), PlayerRole.SEEKER);
         plugin.getDisguiseManager().removeDisguise(hider);
+        plugin.getScoreboardManager().assignTeam(hider, PlayerRole.SEEKER);
 
-        // Heal them up, give seeker items
+        // Heal them up, give seeker items and speed
         hider.setHealth(20);
         hider.setFoodLevel(20);
         hider.getInventory().clear();
+        hider.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, Integer.MAX_VALUE, 0, false, false, false));
         giveSeekerItems(hider);
 
         hider.showTitle(Title.title(
@@ -302,8 +326,12 @@ public class GameManager {
             if (p != null && p.isOnline()) {
                 p.getInventory().clear();
                 p.setFreezeTicks(0);
+                p.removePotionEffect(PotionEffectType.BLINDNESS);
+                p.removePotionEffect(PotionEffectType.SLOWNESS);
+                p.removePotionEffect(PotionEffectType.SPEED);
+                p.removePotionEffect(PotionEffectType.SATURATION);
                 p.setCollidable(true);
-                p.setGameMode(GameMode.SURVIVAL);
+                p.setGameMode(GameMode.ADVENTURE);
             }
         }
 
@@ -315,6 +343,7 @@ public class GameManager {
         foundTimes.clear();
         trackerCooldowns.clear();
         sonarCooldowns.clear();
+        combatTags.clear();
         state = GameState.WAITING;
     }
 
@@ -335,8 +364,12 @@ public class GameManager {
             if (p != null && p.isOnline()) {
                 p.getInventory().clear();
                 p.setFreezeTicks(0);
+                p.removePotionEffect(PotionEffectType.BLINDNESS);
+                p.removePotionEffect(PotionEffectType.SLOWNESS);
+                p.removePotionEffect(PotionEffectType.SPEED);
+                p.removePotionEffect(PotionEffectType.SATURATION);
                 p.setCollidable(true);
-                p.setGameMode(GameMode.SURVIVAL);
+                p.setGameMode(GameMode.ADVENTURE);
             }
         }
 
@@ -344,6 +377,7 @@ public class GameManager {
         foundTimes.clear();
         trackerCooldowns.clear();
         sonarCooldowns.clear();
+        combatTags.clear();
         state = GameState.WAITING;
 
         broadcastMessage(Component.text("Block Hide and Seek has been stopped!", NamedTextColor.RED));
@@ -356,9 +390,11 @@ public class GameManager {
         if (state != GameState.PLAYING) return false;
         if (getRole(seeker) != PlayerRole.SEEKER) return false;
 
-        // Check cooldown
+        // Check cooldown — scales with seeker count (each extra seeker adds 50% base cooldown)
         long now = System.currentTimeMillis();
-        long cooldownMs = plugin.getConfigManager().getTrackerCooldown() * 1000L;
+        long baseCooldownMs = plugin.getConfigManager().getTrackerCooldown() * 1000L;
+        int seekerCount = getSeekerCount();
+        long cooldownMs = baseCooldownMs + (long) ((seekerCount - 1) * baseCooldownMs * 0.5);
         Long lastUse = trackerCooldowns.get(seeker.getUniqueId());
         if (lastUse != null && (now - lastUse) < cooldownMs) {
             long remaining = (cooldownMs - (now - lastUse)) / 1000;
@@ -419,9 +455,11 @@ public class GameManager {
         if (state != GameState.PLAYING) return false;
         if (getRole(seeker) != PlayerRole.SEEKER) return false;
 
-        // Check cooldown (uses half of tracker cooldown)
+        // Check cooldown (half of tracker base) — scales with seeker count
         long now = System.currentTimeMillis();
-        long cooldownMs = (plugin.getConfigManager().getTrackerCooldown() / 2) * 1000L;
+        long baseCooldownMs = (plugin.getConfigManager().getTrackerCooldown() / 2) * 1000L;
+        int seekerCount = getSeekerCount();
+        long cooldownMs = baseCooldownMs + (long) ((seekerCount - 1) * baseCooldownMs * 0.5);
         Long lastUse = sonarCooldowns.get(seeker.getUniqueId());
         if (lastUse != null && (now - lastUse) < cooldownMs) {
             long remaining = (cooldownMs - (now - lastUse)) / 1000;
@@ -456,8 +494,8 @@ public class GameManager {
     }
 
     private void giveSeekerItems(Player seeker) {
-        // Iron sword
-        ItemStack sword = new ItemStack(Material.IRON_SWORD);
+        // Diamond sword
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
         ItemMeta swordMeta = sword.getItemMeta();
         swordMeta.displayName(Component.text("Seeker Sword", NamedTextColor.RED, TextDecoration.BOLD));
         sword.setItemMeta(swordMeta);
@@ -488,27 +526,63 @@ public class GameManager {
         sonarMeta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
         sonar.setItemMeta(sonarMeta);
         seeker.getInventory().setItem(7, sonar);
+
+        // Red leather armor
+        org.bukkit.Color redColor = org.bukkit.Color.fromRGB(180, 30, 30);
+
+        ItemStack helmet = new ItemStack(Material.LEATHER_HELMET);
+        org.bukkit.inventory.meta.LeatherArmorMeta helmetMeta = (org.bukkit.inventory.meta.LeatherArmorMeta) helmet.getItemMeta();
+        helmetMeta.setColor(redColor);
+        helmetMeta.displayName(Component.text("Seeker Helmet", NamedTextColor.RED));
+        helmet.setItemMeta(helmetMeta);
+
+        ItemStack chestplate = new ItemStack(Material.LEATHER_CHESTPLATE);
+        org.bukkit.inventory.meta.LeatherArmorMeta chestMeta = (org.bukkit.inventory.meta.LeatherArmorMeta) chestplate.getItemMeta();
+        chestMeta.setColor(redColor);
+        chestMeta.displayName(Component.text("Seeker Chestplate", NamedTextColor.RED));
+        chestplate.setItemMeta(chestMeta);
+
+        ItemStack leggings = new ItemStack(Material.LEATHER_LEGGINGS);
+        org.bukkit.inventory.meta.LeatherArmorMeta legMeta = (org.bukkit.inventory.meta.LeatherArmorMeta) leggings.getItemMeta();
+        legMeta.setColor(redColor);
+        legMeta.displayName(Component.text("Seeker Leggings", NamedTextColor.RED));
+        leggings.setItemMeta(legMeta);
+
+        ItemStack boots = new ItemStack(Material.LEATHER_BOOTS);
+        org.bukkit.inventory.meta.LeatherArmorMeta bootsMeta = (org.bukkit.inventory.meta.LeatherArmorMeta) boots.getItemMeta();
+        bootsMeta.setColor(redColor);
+        bootsMeta.displayName(Component.text("Seeker Boots", NamedTextColor.RED));
+        boots.setItemMeta(bootsMeta);
+
+        seeker.getInventory().setHelmet(helmet);
+        seeker.getInventory().setChestplate(chestplate);
+        seeker.getInventory().setLeggings(leggings);
+        seeker.getInventory().setBoots(boots);
     }
 
+    private static final String DISGUISE_ITEM_NAME = "§a§lDisguise Wand";
+
     private void giveBlockSelector(Player hider) {
-        List<Material> blocks = plugin.getConfigManager().getAllowedBlocks();
-        // Give a selection of blocks (up to 9 for the hotbar)
-        int count = Math.min(blocks.size(), 9);
-        for (int i = 0; i < count; i++) {
-            ItemStack item = new ItemStack(blocks.get(i));
-            ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text("Click to disguise as " + formatName(blocks.get(i)),
-                    NamedTextColor.GREEN));
-            List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("Right-click to become this block!", NamedTextColor.GRAY));
-            meta.lore(lore);
-            item.setItemMeta(meta);
-            hider.getInventory().setItem(i, item);
-        }
-        if (blocks.size() > 9) {
-            hider.sendMessage(Component.text("More blocks available! Use /hs blocks to see the full list.",
-                    NamedTextColor.YELLOW));
-        }
+        // Give a single item — right-click to copy the block you're looking at
+        ItemStack wand = new ItemStack(Material.BLAZE_ROD);
+        ItemMeta meta = wand.getItemMeta();
+        meta.displayName(Component.text(DISGUISE_ITEM_NAME));
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.text("Look at a block and right-click to disguise!", NamedTextColor.GRAY));
+        lore.add(Component.text("Right-click air to remove your disguise.", NamedTextColor.DARK_GRAY));
+        meta.lore(lore);
+        meta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
+        wand.setItemMeta(meta);
+        hider.getInventory().setItem(0, wand);
+    }
+
+    public boolean isDisguiseWand(ItemStack item) {
+        if (item == null || item.getType() != Material.BLAZE_ROD) return false;
+        if (!item.hasItemMeta()) return false;
+        ItemMeta meta = item.getItemMeta();
+        if (meta.displayName() == null) return false;
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+                .plainText().serialize(meta.displayName()).contains("Disguise Wand");
     }
 
     private String formatName(Material material) {
@@ -575,6 +649,7 @@ public class GameManager {
     }
 
     public int getTimeRemaining() { return timeRemaining; }
+    public int getSeekerCountdownRemaining() { return seekerCountdownRemaining; }
 
     public List<Player> getPlayersInGame() {
         List<Player> players = new ArrayList<>();
@@ -583,6 +658,22 @@ public class GameManager {
             if (p != null && p.isOnline()) players.add(p);
         }
         return players;
+    }
+
+    /**
+     * Tag a player as being in combat (both attacker and victim).
+     */
+    public void tagCombat(Player player) {
+        combatTags.put(player.getUniqueId(), System.currentTimeMillis());
+    }
+
+    /**
+     * Check if a player is currently in combat (tagged within the last 5 seconds).
+     */
+    public boolean isInCombat(Player player) {
+        Long lastTag = combatTags.get(player.getUniqueId());
+        if (lastTag == null) return false;
+        return (System.currentTimeMillis() - lastTag) < COMBAT_TAG_DURATION_MS;
     }
 
     public Map<UUID, PlayerRole> getPlayerRoles() {
@@ -594,8 +685,13 @@ public class GameManager {
         if (role == PlayerRole.HIDER) {
             plugin.getDisguiseManager().removeDisguise(player);
         }
+        plugin.getScoreboardManager().removeFromTeams(player);
         player.getInventory().clear();
         player.setFreezeTicks(0);
+        player.removePotionEffect(PotionEffectType.BLINDNESS);
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
+        player.removePotionEffect(PotionEffectType.SPEED);
+        player.removePotionEffect(PotionEffectType.SATURATION);
         player.setCollidable(true);
         player.setGameMode(GameMode.SURVIVAL);
 
