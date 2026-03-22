@@ -327,7 +327,7 @@ public class GameManager {
                 p.removePotionEffect(PotionEffectType.SPEED);
                 p.removePotionEffect(PotionEffectType.SATURATION);
                 p.setCollidable(true);
-                p.setGameMode(GameMode.SURVIVAL);
+                p.setGameMode(GameMode.ADVENTURE);
             }
         }
 
@@ -364,7 +364,7 @@ public class GameManager {
                 p.removePotionEffect(PotionEffectType.SPEED);
                 p.removePotionEffect(PotionEffectType.SATURATION);
                 p.setCollidable(true);
-                p.setGameMode(GameMode.SURVIVAL);
+                p.setGameMode(GameMode.ADVENTURE);
             }
         }
 
