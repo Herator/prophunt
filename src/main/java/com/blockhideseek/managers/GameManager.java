@@ -32,6 +32,9 @@ public class GameManager {
     private final Map<UUID, Long> foundTimes = new LinkedHashMap<>(); // track order found
     private final Map<UUID, Long> trackerCooldowns = new HashMap<>();
     private final Map<UUID, Long> sonarCooldowns = new HashMap<>();
+    private final Map<UUID, Long> combatTags = new HashMap<>();
+
+    private static final long COMBAT_TAG_DURATION_MS = 20000; // 20 seconds out of combat to regen
 
     private BukkitTask gameTimer;
     private BukkitTask countdownTimer;
@@ -340,6 +343,7 @@ public class GameManager {
         foundTimes.clear();
         trackerCooldowns.clear();
         sonarCooldowns.clear();
+        combatTags.clear();
         state = GameState.WAITING;
     }
 
@@ -373,6 +377,7 @@ public class GameManager {
         foundTimes.clear();
         trackerCooldowns.clear();
         sonarCooldowns.clear();
+        combatTags.clear();
         state = GameState.WAITING;
 
         broadcastMessage(Component.text("Block Hide and Seek has been stopped!", NamedTextColor.RED));
@@ -649,6 +654,22 @@ public class GameManager {
             if (p != null && p.isOnline()) players.add(p);
         }
         return players;
+    }
+
+    /**
+     * Tag a player as being in combat (both attacker and victim).
+     */
+    public void tagCombat(Player player) {
+        combatTags.put(player.getUniqueId(), System.currentTimeMillis());
+    }
+
+    /**
+     * Check if a player is currently in combat (tagged within the last 5 seconds).
+     */
+    public boolean isInCombat(Player player) {
+        Long lastTag = combatTags.get(player.getUniqueId());
+        if (lastTag == null) return false;
+        return (System.currentTimeMillis() - lastTag) < COMBAT_TAG_DURATION_MS;
     }
 
     public Map<UUID, PlayerRole> getPlayerRoles() {

@@ -123,6 +123,9 @@ public class PlayerListener implements Listener {
             if (plugin.getDisguiseManager().isSolid(victim)) {
                 plugin.getDisguiseManager().breakSolidBlock(victim);
             }
+            // Tag both players as in combat (blocks regen for 5 seconds)
+            plugin.getGameManager().tagCombat(attacker);
+            plugin.getGameManager().tagCombat(victim);
         } else {
             // Prevent friendly fire (seeker vs seeker, hider vs anyone)
             event.setCancelled(true);
@@ -306,17 +309,19 @@ public class PlayerListener implements Listener {
     }
 
     /**
-     * Disable natural health regeneration during game.
+     * Only block health regeneration while in combat. Out of combat, regen is allowed.
      */
     @EventHandler
     public void onPlayerRegen(EntityRegainHealthEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (!plugin.getGameManager().isInGame(player)) return;
 
-        // Block natural and saturation regen, allow other sources (like potions if you add them)
+        // Only block saturation/natural regen while in combat
         if (event.getRegainReason() == EntityRegainHealthEvent.RegainReason.SATIATED ||
             event.getRegainReason() == EntityRegainHealthEvent.RegainReason.REGEN) {
-            event.setCancelled(true);
+            if (plugin.getGameManager().isInCombat(player)) {
+                event.setCancelled(true);
+            }
         }
     }
 
