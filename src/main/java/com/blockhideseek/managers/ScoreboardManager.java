@@ -9,6 +9,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.*;
 
+import org.bukkit.scoreboard.Team;
+
 import java.util.UUID;
 
 public class ScoreboardManager {
@@ -16,6 +18,8 @@ public class ScoreboardManager {
     private final BlockHideSeek plugin;
     private Scoreboard scoreboard;
     private Objective objective;
+    private Team hiderTeam;
+    private Team seekerTeam;
 
     public ScoreboardManager(BlockHideSeek plugin) {
         this.plugin = plugin;
@@ -30,12 +34,52 @@ public class ScoreboardManager {
         );
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
 
+        // Create tab list teams
+        hiderTeam = scoreboard.registerNewTeam("hiders");
+        hiderTeam.color(NamedTextColor.GREEN);
+        hiderTeam.prefix(Component.text("[Hider] ", NamedTextColor.GREEN));
+
+        seekerTeam = scoreboard.registerNewTeam("seekers");
+        seekerTeam.color(NamedTextColor.RED);
+        seekerTeam.prefix(Component.text("[Seeker] ", NamedTextColor.RED));
+
+        // Assign players to teams based on their roles
+        for (Player player : gameManager.getPlayersInGame()) {
+            assignTeam(player, gameManager.getRole(player));
+        }
+
         updateScoreboard(gameManager);
 
         // Apply to all players in game
         for (Player player : gameManager.getPlayersInGame()) {
             player.setScoreboard(scoreboard);
         }
+    }
+
+    /**
+     * Assign a player to the correct tab list team based on their role.
+     */
+    public void assignTeam(Player player, com.blockhideseek.PlayerRole role) {
+        if (scoreboard == null) return;
+        if (role == null) return;
+
+        // Remove from both teams first
+        if (hiderTeam != null) hiderTeam.removeEntry(player.getName());
+        if (seekerTeam != null) seekerTeam.removeEntry(player.getName());
+
+        switch (role) {
+            case HIDER -> { if (hiderTeam != null) hiderTeam.addEntry(player.getName()); }
+            case SEEKER -> { if (seekerTeam != null) seekerTeam.addEntry(player.getName()); }
+        }
+    }
+
+    /**
+     * Remove a player from all teams.
+     */
+    public void removeFromTeams(Player player) {
+        if (scoreboard == null) return;
+        if (hiderTeam != null) hiderTeam.removeEntry(player.getName());
+        if (seekerTeam != null) seekerTeam.removeEntry(player.getName());
     }
 
     public void updateScoreboard(GameManager gameManager) {

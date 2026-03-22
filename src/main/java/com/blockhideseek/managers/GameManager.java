@@ -232,6 +232,7 @@ public class GameManager {
         // Convert hider to seeker
         playerRoles.put(hider.getUniqueId(), PlayerRole.SEEKER);
         plugin.getDisguiseManager().removeDisguise(hider);
+        plugin.getScoreboardManager().assignTeam(hider, PlayerRole.SEEKER);
 
         // Heal them up, give seeker items and speed
         hider.setHealth(20);
@@ -659,6 +660,7 @@ public class GameManager {
         if (role == PlayerRole.HIDER) {
             plugin.getDisguiseManager().removeDisguise(player);
         }
+        plugin.getScoreboardManager().removeFromTeams(player);
         player.getInventory().clear();
         player.setFreezeTicks(0);
         player.removePotionEffect(PotionEffectType.BLINDNESS);
