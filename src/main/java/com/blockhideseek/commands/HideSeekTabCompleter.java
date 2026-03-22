@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class HideSeekTabCompleter implements TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
-            "start", "stop", "setseekerspawn", "addblock", "removeblock",
+            "start", "stop", "setseekerspawn", "setgamespawn", "addblock", "removeblock",
             "blocks", "settime", "setcountdown", "setcooldown", "reload"
     );
 

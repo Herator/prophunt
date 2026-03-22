@@ -14,8 +14,12 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 
@@ -41,23 +45,38 @@ public class PlayerListener implements Listener {
         GameState state = plugin.getGameManager().getState();
         PlayerRole role = plugin.getGameManager().getRole(player);
 
-        // Handle hider block selection during hiding/playing phase
+        // Handle hider using disguise wand
         if (role == PlayerRole.HIDER &&
             (state == GameState.HIDING || state == GameState.PLAYING)) {
 
             ItemStack item = event.getItem();
-            if (item != null && item.getType().isBlock()) {
+            if (item != null && plugin.getGameManager().isDisguiseWand(item)) {
                 if (event.getAction().name().contains("RIGHT")) {
                     event.setCancelled(true);
 
-                    Material blockMat = item.getType();
-                    List<Material> allowed = plugin.getConfigManager().getAllowedBlocks();
-                    if (allowed.contains(blockMat)) {
-                        plugin.getDisguiseManager().disguisePlayer(player, blockMat);
-                        // Clear inventory after disguising
-                        player.getInventory().clear();
+                    // Raycast to find the block the player is looking at
+                    org.bukkit.block.Block targetBlock = player.getTargetBlockExact(5);
+
+                    if (targetBlock != null && targetBlock.getType() != Material.AIR) {
+                        // Looking at a block — disguise as it
+                        Material blockMat = targetBlock.getType();
+                        java.util.List<Material> allowed = plugin.getConfigManager().getAllowedBlocks();
+                        if (allowed.contains(blockMat)) {
+                            plugin.getDisguiseManager().disguisePlayer(player, blockMat);
+                        } else {
+                            player.sendMessage(Component.text("That block is not in the allowed list!",
+                                    NamedTextColor.RED));
+                        }
                     } else {
-                        player.sendMessage(Component.text("That block is not allowed!", NamedTextColor.RED));
+                        // Looking at air — remove disguise
+                        if (plugin.getDisguiseManager().isDisguised(player)) {
+                            plugin.getDisguiseManager().removeDisguise(player);
+                            player.sendMessage(Component.text("Disguise removed!",
+                                    NamedTextColor.YELLOW));
+                        } else {
+                            player.sendMessage(Component.text("Look at a block to disguise as it!",
+                                    NamedTextColor.GRAY));
+                        }
                     }
                 }
             }
@@ -219,12 +238,84 @@ public class PlayerListener implements Listener {
     }
 
     /**
-     * Prevent hunger during game.
+     * Prevent opening chests, furnaces, and any other container during game.
+     */
+    @EventHandler
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        if (plugin.getGameManager().isInGame(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Prevent clicking armor slots so seekers can't remove their armor.
+     */
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!plugin.getGameManager().isInGame(player)) return;
+
+        // Block armor slot clicks (slots 36-39 in player inventory are armor)
+        int slot = event.getRawSlot();
+        if (event.getSlotType() == InventoryType.SlotType.ARMOR) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Prevent interacting with item frames, armor stands, etc.
+     */
+    @EventHandler
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        Player player = event.getPlayer();
+        if (!plugin.getGameManager().isInGame(player)) return;
+
+        // Allow seeker hitting hiders (handled elsewhere), block everything else
+        org.bukkit.entity.Entity target = event.getRightClicked();
+        if (target instanceof org.bukkit.entity.ItemFrame ||
+            target instanceof org.bukkit.entity.ArmorStand) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Prevent damaging item frames and armor stands during game.
+     */
+    @EventHandler
+    public void onEntityDamageByPlayer(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) return;
+        if (!plugin.getGameManager().isInGame(player)) return;
+
+        org.bukkit.entity.Entity target = event.getEntity();
+        if (target instanceof org.bukkit.entity.ItemFrame ||
+            target instanceof org.bukkit.entity.ArmorStand) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Prevent hunger loss during game (saturation handles keeping it full).
      */
     @EventHandler
     public void onFoodLevelChange(FoodLevelChangeEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (plugin.getGameManager().isInGame(player)) {
+            event.setFoodLevel(20);
+        }
+    }
+
+    /**
+     * Disable natural health regeneration during game.
+     */
+    @EventHandler
+    public void onPlayerRegen(EntityRegainHealthEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (!plugin.getGameManager().isInGame(player)) return;
+
+        // Block natural and saturation regen, allow other sources (like potions if you add them)
+        if (event.getRegainReason() == EntityRegainHealthEvent.RegainReason.SATIATED ||
+            event.getRegainReason() == EntityRegainHealthEvent.RegainReason.REGEN) {
             event.setCancelled(true);
         }
     }

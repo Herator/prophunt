@@ -21,6 +21,7 @@ public class ConfigManager {
     private int trackerInaccuracy;
     private List<Material> allowedBlocks;
     private Location seekerSpawn;
+    private Location gameSpawn;
 
     public ConfigManager(BlockHideSeek plugin) {
         this.plugin = plugin;
@@ -67,6 +68,17 @@ public class ConfigManager {
         float yaw = (float) plugin.getConfig().getDouble("seeker-spawn.yaw", 0);
         float pitch = (float) plugin.getConfig().getDouble("seeker-spawn.pitch", 0);
         seekerSpawn = new Location(world, x, y, z, yaw, pitch);
+
+        // Load game spawn (where hiders start and seekers tp to after countdown)
+        String gsWorldName = plugin.getConfig().getString("game-spawn.world", "world");
+        World gsWorld = Bukkit.getWorld(gsWorldName);
+        if (gsWorld == null) gsWorld = Bukkit.getWorlds().get(0);
+        double gsx = plugin.getConfig().getDouble("game-spawn.x", 0);
+        double gsy = plugin.getConfig().getDouble("game-spawn.y", 64);
+        double gsz = plugin.getConfig().getDouble("game-spawn.z", 0);
+        float gsyaw = (float) plugin.getConfig().getDouble("game-spawn.yaw", 0);
+        float gspitch = (float) plugin.getConfig().getDouble("game-spawn.pitch", 0);
+        gameSpawn = new Location(gsWorld, gsx, gsy, gsz, gsyaw, gspitch);
     }
 
     public void save() {
@@ -87,6 +99,13 @@ public class ConfigManager {
         plugin.getConfig().set("seeker-spawn.z", seekerSpawn.getZ());
         plugin.getConfig().set("seeker-spawn.yaw", seekerSpawn.getYaw());
         plugin.getConfig().set("seeker-spawn.pitch", seekerSpawn.getPitch());
+
+        plugin.getConfig().set("game-spawn.world", gameSpawn.getWorld().getName());
+        plugin.getConfig().set("game-spawn.x", gameSpawn.getX());
+        plugin.getConfig().set("game-spawn.y", gameSpawn.getY());
+        plugin.getConfig().set("game-spawn.z", gameSpawn.getZ());
+        plugin.getConfig().set("game-spawn.yaw", gameSpawn.getYaw());
+        plugin.getConfig().set("game-spawn.pitch", gameSpawn.getPitch());
 
         plugin.saveConfig();
     }
@@ -125,6 +144,13 @@ public class ConfigManager {
 
     public void setSeekerSpawn(Location location) {
         this.seekerSpawn = location.clone();
+        save();
+    }
+
+    public Location getGameSpawn() { return gameSpawn; }
+
+    public void setGameSpawn(Location location) {
+        this.gameSpawn = location.clone();
         save();
     }
 }

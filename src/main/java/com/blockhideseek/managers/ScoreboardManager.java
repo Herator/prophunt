@@ -59,15 +59,24 @@ public class ScoreboardManager {
         };
 
         // Build scoreboard lines (higher score = higher position)
-        objective.getScore("§e§l").setScore(8);
-        objective.getScore(stateStr).setScore(7);
-        objective.getScore("§f").setScore(6);
-        objective.getScore("§fTime Left: §a" + timeStr).setScore(5);
-        objective.getScore("§r").setScore(4);
-        objective.getScore("§aHiders: §f" + gameManager.getHiderCount()).setScore(3);
-        objective.getScore("§cSeekers: §f" + gameManager.getSeekerCount()).setScore(2);
-        objective.getScore("§r§r").setScore(1);
-        objective.getScore("§6blockhideseek").setScore(0);
+        int line = 9;
+        objective.getScore("§e§l").setScore(line--);
+        objective.getScore(stateStr).setScore(line--);
+        objective.getScore("§f").setScore(line--);
+
+        // Show seeker countdown during hiding phase
+        if (state == GameState.HIDING) {
+            int countdown = gameManager.getSeekerCountdownRemaining();
+            objective.getScore("§cSeekers out in: §e" + countdown + "s").setScore(line--);
+            objective.getScore("§8").setScore(line--);
+        }
+
+        objective.getScore("§fTime Left: §a" + timeStr).setScore(line--);
+        objective.getScore("§r").setScore(line--);
+        objective.getScore("§aHiders: §f" + gameManager.getHiderCount()).setScore(line--);
+        objective.getScore("§cSeekers: §f" + gameManager.getSeekerCount()).setScore(line--);
+        objective.getScore("§r§r").setScore(line--);
+        objective.getScore("§6blockhideseek").setScore(line);
     }
 
     public void removeScoreboard() {
