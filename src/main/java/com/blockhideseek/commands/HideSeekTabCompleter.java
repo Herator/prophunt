@@ -40,7 +40,17 @@ public class HideSeekTabCompleter implements TabCompleter {
                             .filter(n -> n.toUpperCase().startsWith(partial))
                             .collect(Collectors.toList());
                 }
-                case "addblock", "removeblock" -> {
+                case "addblock" -> {
+                    completions = new ArrayList<>();
+                    if ("ALL".startsWith(partial)) completions.add("all");
+                    Arrays.stream(Material.values())
+                            .filter(Material::isBlock)
+                            .map(Material::name)
+                            .filter(n -> n.startsWith(partial))
+                            .limit(30)
+                            .forEach(completions::add);
+                }
+                case "removeblock" -> {
                     // Suggest block materials
                     completions = Arrays.stream(Material.values())
                             .filter(Material::isBlock)

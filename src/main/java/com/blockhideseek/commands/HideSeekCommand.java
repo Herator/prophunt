@@ -131,7 +131,20 @@ public class HideSeekCommand implements CommandExecutor {
 
     private void handleAddBlock(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Usage: /hs addblock <material> [material2] [material3] ...", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Usage: /hs addblock <material> [material2] ... | all", NamedTextColor.RED));
+            return;
+        }
+        if (args[1].equalsIgnoreCase("all")) {
+            int count = 0;
+            for (Material mat : Material.values()) {
+                if (!mat.isBlock()) continue;
+                if (mat.name().endsWith("_CARPET")) continue;
+                if (mat == Material.SNOW) continue;
+                plugin.getConfigManager().addBlock(mat);
+                count++;
+            }
+            sender.sendMessage(Component.text("Added " + count + " blocks to the allowed blocks list (excluded carpets and layered snow)!",
+                    NamedTextColor.GREEN));
             return;
         }
         for (int i = 1; i < args.length; i++) {
