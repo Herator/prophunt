@@ -131,20 +131,22 @@ public class HideSeekCommand implements CommandExecutor {
 
     private void handleAddBlock(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Usage: /hs addblock <material>", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Usage: /hs addblock <material> [material2] [material3] ...", NamedTextColor.RED));
             return;
         }
-        try {
-            Material mat = Material.valueOf(args[1].toUpperCase());
-            if (!mat.isBlock()) {
-                sender.sendMessage(Component.text(args[1] + " is not a block!", NamedTextColor.RED));
-                return;
+        for (int i = 1; i < args.length; i++) {
+            try {
+                Material mat = Material.valueOf(args[i].toUpperCase());
+                if (!mat.isBlock()) {
+                    sender.sendMessage(Component.text(args[i] + " is not a block!", NamedTextColor.RED));
+                    continue;
+                }
+                plugin.getConfigManager().addBlock(mat);
+                sender.sendMessage(Component.text("Added " + mat.name() + " to the allowed blocks list!",
+                        NamedTextColor.GREEN));
+            } catch (IllegalArgumentException e) {
+                sender.sendMessage(Component.text("Unknown material: " + args[i], NamedTextColor.RED));
             }
-            plugin.getConfigManager().addBlock(mat);
-            sender.sendMessage(Component.text("Added " + mat.name() + " to the allowed blocks list!",
-                    NamedTextColor.GREEN));
-        } catch (IllegalArgumentException e) {
-            sender.sendMessage(Component.text("Unknown material: " + args[1], NamedTextColor.RED));
         }
     }
 
