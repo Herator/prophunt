@@ -33,6 +33,7 @@ public class GameManager {
     private final Map<UUID, Long> trackerCooldowns = new HashMap<>();
     private final Map<UUID, Long> sonarCooldowns = new HashMap<>();
     private final Map<UUID, Long> combatTags = new HashMap<>();
+    private final Set<UUID> pendingSpectators = new HashSet<>();
 
     private static final long COMBAT_TAG_DURATION_MS = 20000; // 20 seconds out of combat to regen
 
@@ -70,6 +71,23 @@ public class GameManager {
         for (Player hider : hiders) {
             playerRoles.put(hider.getUniqueId(), PlayerRole.HIDER);
         }
+
+        // Set up spectators registered before game start
+        for (UUID uuid : pendingSpectators) {
+            Player spectator = Bukkit.getPlayer(uuid);
+            if (spectator == null || !spectator.isOnline()) continue;
+            if (playerRoles.containsKey(uuid)) continue; // Named as seeker — let them play
+            playerRoles.put(uuid, PlayerRole.SPECTATOR);
+            spectator.getInventory().clear();
+            spectator.setGameMode(GameMode.SPECTATOR);
+            spectator.teleport(plugin.getConfigManager().getGameSpawn());
+            spectator.showTitle(Title.title(
+                    Component.text("Spectating", NamedTextColor.GRAY, TextDecoration.BOLD),
+                    Component.text("Watching this round...", NamedTextColor.GRAY),
+                    Title.Times.times(Duration.ofMillis(500), Duration.ofSeconds(3), Duration.ofMillis(500))
+            ));
+        }
+        pendingSpectators.clear();
 
         state = GameState.HIDING;
         gameStartTime = System.currentTimeMillis();
@@ -344,6 +362,7 @@ public class GameManager {
         trackerCooldowns.clear();
         sonarCooldowns.clear();
         combatTags.clear();
+        pendingSpectators.clear();
         state = GameState.WAITING;
     }
 
@@ -378,6 +397,7 @@ public class GameManager {
         trackerCooldowns.clear();
         sonarCooldowns.clear();
         combatTags.clear();
+        pendingSpectators.clear();
         state = GameState.WAITING;
 
         broadcastMessage(Component.text("Block Hide and Seek has been stopped!", NamedTextColor.RED));
@@ -646,6 +666,30 @@ public class GameManager {
 
     public int getSeekerCount() {
         return (int) playerRoles.values().stream().filter(r -> r == PlayerRole.SEEKER).count();
+    }
+
+    public int getSpectatorCount() {
+        return (int) playerRoles.values().stream().filter(r -> r == PlayerRole.SPECTATOR).count();
+    }
+
+    /**
+     * Toggle a player's pending spectator status before a game starts.
+     * @return true if they were added as spectator, false if removed.
+     */
+    public boolean togglePendingSpectator(Player player) {
+        if (pendingSpectators.remove(player.getUniqueId())) {
+            return false;
+        }
+        pendingSpectators.add(player.getUniqueId());
+        return true;
+    }
+
+    public boolean isPendingSpectator(Player player) {
+        return pendingSpectators.contains(player.getUniqueId());
+    }
+
+    public void removePendingSpectator(Player player) {
+        pendingSpectators.remove(player.getUniqueId());
     }
 
     public int getTimeRemaining() { return timeRemaining; }

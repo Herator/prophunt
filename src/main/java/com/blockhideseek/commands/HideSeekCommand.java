@@ -37,6 +37,7 @@ public class HideSeekCommand implements CommandExecutor {
             case "stop" -> handleStop(sender);
             case "setseekerspawn" -> handleSetSeekerSpawn(sender);
             case "setgamespawn" -> handleSetGameSpawn(sender);
+            case "spectate" -> handleSpectate(sender, args);
             case "addblock" -> handleAddBlock(sender, args);
             case "removeblock" -> handleRemoveBlock(sender, args);
             case "blocks" -> handleListBlocks(sender);
@@ -76,10 +77,10 @@ public class HideSeekCommand implements CommandExecutor {
             seekers.add(seeker);
         }
 
-        // Everyone else is a hider
+        // Everyone else is a hider (excluding players who registered to spectate)
         List<Player> hiders = new ArrayList<>();
         for (Player online : Bukkit.getOnlinePlayers()) {
-            if (!seekers.contains(online)) {
+            if (!seekers.contains(online) && !plugin.getGameManager().isPendingSpectator(online)) {
                 hiders.add(online);
             }
         }
@@ -127,6 +128,44 @@ public class HideSeekCommand implements CommandExecutor {
         sender.sendMessage(Component.text("Game spawn set to your current location!", NamedTextColor.GREEN));
         sender.sendMessage(Component.text("Hiders will start here, and seekers will be teleported here after the countdown.",
                 NamedTextColor.GRAY));
+    }
+
+    private void handleSpectate(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can use this command.", NamedTextColor.RED));
+            return;
+        }
+        if (plugin.getGameManager().getState() != GameState.WAITING) {
+            sender.sendMessage(Component.text("You can only toggle spectate before a game starts!", NamedTextColor.RED));
+            return;
+        }
+
+        if (args.length >= 2) {
+            if (!player.isOp()) {
+                sender.sendMessage(Component.text("You don't have permission to spectate other players!", NamedTextColor.RED));
+                return;
+            }
+            Player target = Bukkit.getPlayer(args[1]);
+            if (target == null || !target.isOnline()) {
+                sender.sendMessage(Component.text("Player not found: " + args[1], NamedTextColor.RED));
+                return;
+            }
+            boolean added = plugin.getGameManager().togglePendingSpectator(target);
+            if (added) {
+                sender.sendMessage(Component.text("Set " + target.getName() + " to spectate the next round.", NamedTextColor.GREEN));
+                target.sendMessage(Component.text("You have been set to spectate the next round by " + player.getName() + ".", NamedTextColor.YELLOW));
+            } else {
+                sender.sendMessage(Component.text("Removed " + target.getName() + " from spectators.", NamedTextColor.GREEN));
+                target.sendMessage(Component.text("You have been removed from spectators by " + player.getName() + ".", NamedTextColor.YELLOW));
+            }
+        } else {
+            boolean added = plugin.getGameManager().togglePendingSpectator(player);
+            if (added) {
+                player.sendMessage(Component.text("You will spectate the next round. Use /hs spectate again to cancel.", NamedTextColor.GREEN));
+            } else {
+                player.sendMessage(Component.text("Spectate cancelled — you will play in the next round.", NamedTextColor.YELLOW));
+            }
+        }
     }
 
     private void handleAddBlock(CommandSender sender, String[] args) {
@@ -262,6 +301,8 @@ public class HideSeekCommand implements CommandExecutor {
                 .append(Component.text("- Start a game", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs stop ", NamedTextColor.YELLOW)
                 .append(Component.text("- Stop the current game", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/hs spectate [player] ", NamedTextColor.YELLOW)
+                .append(Component.text("- Sit out the next round (OP: spectate another player)", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs setseekerspawn ", NamedTextColor.YELLOW)
                 .append(Component.text("- Set where seekers wait during countdown", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/hs setgamespawn ", NamedTextColor.YELLOW)

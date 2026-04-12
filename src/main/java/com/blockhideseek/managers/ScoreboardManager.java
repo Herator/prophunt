@@ -20,6 +20,7 @@ public class ScoreboardManager {
     private Objective objective;
     private Team hiderTeam;
     private Team seekerTeam;
+    private Team spectatorTeam;
 
     public ScoreboardManager(BlockHideSeek plugin) {
         this.plugin = plugin;
@@ -43,6 +44,10 @@ public class ScoreboardManager {
         seekerTeam.color(NamedTextColor.RED);
         seekerTeam.prefix(Component.text("[Seeker] ", NamedTextColor.RED));
 
+        spectatorTeam = scoreboard.registerNewTeam("spectators");
+        spectatorTeam.color(NamedTextColor.GRAY);
+        spectatorTeam.prefix(Component.text("[Spectator] ", NamedTextColor.GRAY));
+
         // Assign players to teams based on their roles
         for (Player player : gameManager.getPlayersInGame()) {
             assignTeam(player, gameManager.getRole(player));
@@ -63,13 +68,15 @@ public class ScoreboardManager {
         if (scoreboard == null) return;
         if (role == null) return;
 
-        // Remove from both teams first
+        // Remove from all teams first
         if (hiderTeam != null) hiderTeam.removeEntry(player.getName());
         if (seekerTeam != null) seekerTeam.removeEntry(player.getName());
+        if (spectatorTeam != null) spectatorTeam.removeEntry(player.getName());
 
         switch (role) {
             case HIDER -> { if (hiderTeam != null) hiderTeam.addEntry(player.getName()); }
             case SEEKER -> { if (seekerTeam != null) seekerTeam.addEntry(player.getName()); }
+            case SPECTATOR -> { if (spectatorTeam != null) spectatorTeam.addEntry(player.getName()); }
         }
     }
 
@@ -80,6 +87,7 @@ public class ScoreboardManager {
         if (scoreboard == null) return;
         if (hiderTeam != null) hiderTeam.removeEntry(player.getName());
         if (seekerTeam != null) seekerTeam.removeEntry(player.getName());
+        if (spectatorTeam != null) spectatorTeam.removeEntry(player.getName());
     }
 
     public void updateScoreboard(GameManager gameManager) {
@@ -119,6 +127,9 @@ public class ScoreboardManager {
         objective.getScore("§r").setScore(line--);
         objective.getScore("§aHiders: §f" + gameManager.getHiderCount()).setScore(line--);
         objective.getScore("§cSeekers: §f" + gameManager.getSeekerCount()).setScore(line--);
+        if (gameManager.getSpectatorCount() > 0) {
+            objective.getScore("§7Spectators: §f" + gameManager.getSpectatorCount()).setScore(line--);
+        }
         objective.getScore("§r§r").setScore(line--);
         objective.getScore("§6blockhideseek").setScore(line);
     }

@@ -246,9 +246,9 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
-        if (plugin.getGameManager().isInGame(player)) {
-            event.setCancelled(true);
-        }
+        if (!plugin.getGameManager().isInGame(player)) return;
+        if (plugin.getGameManager().getRole(player) == PlayerRole.SPECTATOR) return;
+        event.setCancelled(true);
     }
 
     /**
@@ -258,6 +258,7 @@ public class PlayerListener implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!plugin.getGameManager().isInGame(player)) return;
+        if (plugin.getGameManager().getRole(player) == PlayerRole.SPECTATOR) return;
 
         // Block armor slot clicks (slots 36-39 in player inventory are armor)
         int slot = event.getRawSlot();
@@ -336,6 +337,9 @@ public class PlayerListener implements Listener {
                     Component.text(player.getName() + " disconnected and was removed from the game.",
                             NamedTextColor.GRAY));
             plugin.getGameManager().removePlayer(player);
+        } else {
+            // Clean up pre-game spectator registration if they disconnect
+            plugin.getGameManager().removePendingSpectator(player);
         }
     }
 

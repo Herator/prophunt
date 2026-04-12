@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class HideSeekTabCompleter implements TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
-            "start", "stop", "setseekerspawn", "setgamespawn", "addblock", "removeblock",
+            "start", "stop", "spectate", "setseekerspawn", "setgamespawn", "addblock", "removeblock",
             "blocks", "settime", "setcountdown", "setcooldown", "reload"
     );
 
@@ -33,7 +33,7 @@ public class HideSeekTabCompleter implements TabCompleter {
             String partial = args[args.length - 1].toUpperCase();
 
             switch (sub) {
-                case "start" -> {
+                case "start", "spectate" -> {
                     // Suggest player names
                     completions = Bukkit.getOnlinePlayers().stream()
                             .map(Player::getName)
